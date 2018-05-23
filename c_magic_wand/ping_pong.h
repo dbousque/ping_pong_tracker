@@ -7,6 +7,7 @@
 # include "numpy/arrayobject.h"
 
 # define MAGIC_WAND_TOLERANCE 20.0
+# define GROUP_BY_CLOSEST 0
 
 typedef struct		s_opencv_image
 {
@@ -51,12 +52,15 @@ typedef struct		s_selections
 	int				nb;
 }					t_selections;
 
+t_magic_wand_mask		g_wand_mask;
+t_selections				g_selections;
+
 void				init_list(t_list *list, size_t elt_size);
 void				*new_elt(t_list *lst);
 void				remove_elt(t_list *lst, char *addr);
 void				*pop_elt(t_list *lst);
 void				free_list(t_list *lst);
-void				get_possible_balls(t_opencv_image *image, t_selections *selections);
+void				get_possible_balls(t_opencv_image *image, t_selections *selections, char already_malloced);
 void				set_rgb(t_opencv_image *image, int y, int x, int r, int g, int b);
 unsigned char		get_from_image(t_opencv_image *image, int y, int x, int z);
 

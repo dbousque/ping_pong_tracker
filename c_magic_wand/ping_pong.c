@@ -53,22 +53,20 @@ def is_possible_ball(selection):
 */
 
 
-void	set_colors(t_opencv_image *image)
+int		millis_since(struct timeval *start)
 {
-	int		x;
-	int		y;
+	struct timeval	end;
 
-	x = 100;
-	while (x < 200)
-	{
-		y = 100;
-		while (y < 200)
-		{
-			set_rgb(image, x, y, 255, 0, 0);
-			y++;
-		}
-		x++;
-	}
+	gettimeofday(&end, NULL);
+	return (1000 * (end.tv_sec - start->tv_sec) + (end.tv_usec - start->tv_usec) / 1000);
+}
+
+void	print_time_taken(struct timeval *start, char *before, char *after)
+{
+	int		time_taken;
+
+	time_taken = millis_since(start);
+	printf("%s%d ms%s", before, time_taken, after);
 }
 
 float	get_color_distance(int b, int g, int r, t_pixel_to_explore *pixel)
@@ -91,7 +89,9 @@ void	explore_magic_wand_at(t_opencv_image *image, int y, int x, t_magic_wand_mas
 	int					p_y;
 	int					p_x;
 	int					nb_in_selection;
+	struct timeval		start;
 
+	gettimeofday(&start, NULL);
 	nb_in_selection = 0;
 	wand_mask->pixels_to_explore.len = 0;
 	pixel = new_elt(&(wand_mask->pixels_to_explore));
@@ -106,6 +106,8 @@ void	explore_magic_wand_at(t_opencv_image *image, int y, int x, t_magic_wand_mas
 		p_y = pixel->y;
 		p_x = pixel->x;
 		if (p_y < 0 || p_x < 0 || p_y >= image->height || p_x >= image->width)
+			continue ;
+		if (!GROUP_BY_CLOSEST && wand_mask->selection_ind_mask[(p_y * image->width) + p_x] != -1)
 			continue ;
 		b = get_from_image(image, p_y, p_x, 0);
 		g = get_from_image(image, p_y, p_x, 1);
@@ -135,6 +137,11 @@ void	explore_magic_wand_at(t_opencv_image *image, int y, int x, t_magic_wand_mas
 		*pixel = (t_pixel_to_explore){ .y = p_y, .x = p_x - 1, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
 		pixel = new_elt(&(wand_mask->pixels_to_explore));
 		*pixel = (t_pixel_to_explore){ .y = p_y, .x = p_x + 1, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
+	}
+	if (millis_since(&start) > 2)
+	{
+		printf("more than 2 millis, n %d\n", nb_in_selection);
+		print_time_taken(&start, "", "\n");
 	}
 }
 
@@ -238,18 +245,23 @@ char	more_or_less_square(int *pixels, int length)
 	ratio = ((float)(bottom - top + 1)) / (right - left + 1);
 	if (left > 810 && left < 890)
 		printf("ratio : %.2f\n", ratio);
-	if (ratio < 0.9 || ratio > 1.1)
+	if (ratio < 0.8 || ratio > 1.2)
 		return (0);
 	if (((float)((bottom - top + 1) + (right - left + 1))) / 2  > 80)
 		return (0);
 	return (1);
 }
 
+char	more_or_less_round(int *pixels, int length)
+{
+	
+}
+
 char	is_possible_ball(t_opencv_image *image, int *pixels, int length)
 {
 	if (length > 80 * 80)
 		return (0);
-	if (length < 15 * 15)
+	if (length < 10 * 10)
 		return (0);
 	if (!more_or_less_square(pixels, length))
 		return (0);
@@ -276,23 +288,29 @@ void	find_possible_ball_selections(t_opencv_image *image, t_selections *selectio
 	}
 }
 
-void	get_possible_balls(t_opencv_image *image, t_selections *selections)
+void	get_possible_balls(t_opencv_image *image, t_selections *selections, char already_malloced)
 {
-	t_magic_wand_mask	wand_mask;
 	int					i;
+	struct timeval		start_time;
 
-	wand_mask.selection_ind_mask = (int*)malloc(sizeof(int) * (image->width * image->height));
-	wand_mask.color_distances = (float*)malloc(sizeof(float) * (image->width * image->height));
-	selections->pixels = (int*)malloc(sizeof(int) * 2 * (image->width * image->height));
-	init_list(&(wand_mask.pixels_to_explore), sizeof(t_pixel_to_explore));
+	gettimeofday(&start_time, NULL);
+	if (!already_malloced)
+	{
+		g_wand_mask.selection_ind_mask = (int*)malloc(sizeof(int) * (image->width * image->height));
+		g_wand_mask.color_distances = (float*)malloc(sizeof(float) * (image->width * image->height));
+		selections->pixels = (int*)malloc(sizeof(int) * 2 * (image->width * image->height));
+		init_list(&(g_wand_mask.pixels_to_explore), sizeof(t_pixel_to_explore));
+	}
 	i = 0;
 	while (i < image->width * image->height)
 	{
-		wand_mask.selection_ind_mask[i] = -1;
+		g_wand_mask.selection_ind_mask[i] = -1;
 		i++;
 	}
-	make_magic_wand_mask(image, &wand_mask);
-	selections->nb = wand_mask.selection_ind;
+	print_time_taken(&start_time, "after init : ", "\n");
+	make_magic_wand_mask(image, &g_wand_mask);
+	print_time_taken(&start_time, "after make_magic_wand_mask : ", "\n");
+	selections->nb = g_wand_mask.selection_ind;
 	selections->end_of_selections = (int*)malloc(sizeof(int) * (selections->nb));
 	selections->tmp = (int*)malloc(sizeof(int) * (selections->nb));
 	i = 0;
@@ -302,12 +320,13 @@ void	get_possible_balls(t_opencv_image *image, t_selections *selections)
 		selections->tmp[i] = 0;
 		i++;
 	}
-	group_selections(image, &wand_mask, selections);
+	group_selections(image, &g_wand_mask, selections);
 	// selection->pixels contains [10, 10, 11, 10, 40, 40, 41, 40]
 	// selection->end_of_selections contains [2, 4]
-	free(wand_mask.selection_ind_mask);
-	free(wand_mask.color_distances);
-	free_list(&(wand_mask.pixels_to_explore));
+	//free(g_wand_mask.selection_ind_mask);
+	//free(g_wand_mask.color_distances);
+	//free_list(&(g_wand_mask.pixels_to_explore));
 	find_possible_ball_selections(image, selections);
+	print_time_taken(&start_time, "total : ", "\n");
 	// selection->tmp now contains [0, 1]
 }

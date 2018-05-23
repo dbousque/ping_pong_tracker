@@ -24,7 +24,6 @@ static PyObject	*get_possible_balls_wrapper(PyObject *self, PyObject *args)
 	PyArrayObject 	*array;
 	t_opencv_image	image;
 	char			*error_msg;
-	t_selections	selections;
 	PyObject		*res_balls;
 	PyObject		*tmp_ball;
 	PyObject		*tmp_pixel;
@@ -34,6 +33,7 @@ static PyObject	*get_possible_balls_wrapper(PyObject *self, PyObject *args)
 	int				ind;
 	PyObject		*y;
 	PyObject		*x;
+	char			already_malloced;
 
 	array = NULL;
 	if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &array))
@@ -55,13 +55,16 @@ static PyObject	*get_possible_balls_wrapper(PyObject *self, PyObject *args)
 	image.x_decal = array->strides[1];
 	image.z_decal = array->strides[2];
 	error_msg = NULL;
-	get_possible_balls(&image, &selections);
+	already_malloced = 0;
+	if (g_wand_mask.selection_ind_mask)
+		already_malloced = 1;
+	get_possible_balls(&image, &g_selections, already_malloced);
 	if (!(res_balls = PyList_New(0)))
 		return NULL;
 	i = 0;
-	while (i < selections.nb)
+	while (i < g_selections.nb)
 	{
-		if (selections.tmp[i] != 1)
+		if (g_selections.tmp[i] != 1)
 		{
 			i++;
 			continue ;
@@ -70,13 +73,13 @@ static PyObject	*get_possible_balls_wrapper(PyObject *self, PyObject *args)
 			return NULL;
 		start_offset = 0;
 		if (i > 0)
-			start_offset = selections.end_of_selections[i - 1];
-		selection_length = selections.end_of_selections[i] - start_offset;
+			start_offset = g_selections.end_of_selections[i - 1];
+		selection_length = g_selections.end_of_selections[i] - start_offset;
 		ind = start_offset;
 		while (ind < start_offset + selection_length)
 		{
-			y = PyLong_FromLong(selections.pixels[ind * 2]);
-			x = PyLong_FromLong(selections.pixels[ind * 2 + 1]);
+			y = PyLong_FromLong(g_selections.pixels[ind * 2]);
+			x = PyLong_FromLong(g_selections.pixels[ind * 2 + 1]);
 			if (!(tmp_pixel = PyTuple_Pack(2, y, x)))
 				return NULL;
 			PyList_Append(tmp_ball, tmp_pixel);
@@ -85,9 +88,9 @@ static PyObject	*get_possible_balls_wrapper(PyObject *self, PyObject *args)
 		PyList_Append(res_balls, tmp_ball);
 		i++;
 	}
-	free(selections.pixels);
-	free(selections.end_of_selections);
-	free(selections.tmp);
+	//free(selections.pixels);
+	free(g_selections.end_of_selections);
+	free(g_selections.tmp);
 	return res_balls;
 }
 
@@ -115,5 +118,6 @@ PyMODINIT_FUNC
 PyInit_ping_pong(void)
 {
 	import_array();
+	g_wand_mask.selection_ind_mask = NULL;
 	return PyModule_Create(&cModPyDem);
 }
