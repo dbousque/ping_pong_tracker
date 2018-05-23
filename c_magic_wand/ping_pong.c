@@ -88,7 +88,11 @@ void	explore_magic_wand_at(t_opencv_image *image, int y, int x, t_magic_wand_mas
 	int					b;
 	int					g;
 	int					r;
+	int					p_y;
+	int					p_x;
+	int					nb_in_selection;
 
+	nb_in_selection = 0;
 	wand_mask->pixels_to_explore.len = 0;
 	pixel = new_elt(&(wand_mask->pixels_to_explore));
 	pixel->y = y;
@@ -99,28 +103,38 @@ void	explore_magic_wand_at(t_opencv_image *image, int y, int x, t_magic_wand_mas
 	while (wand_mask->pixels_to_explore.len > 0)
 	{
 		pixel = pop_elt(&(wand_mask->pixels_to_explore));
-		if (pixel->y < 0 || pixel->x < 0 || pixel->y >= image->height || pixel->x >= image->width)
+		p_y = pixel->y;
+		p_x = pixel->x;
+		if (p_y < 0 || p_x < 0 || p_y >= image->height || p_x >= image->width)
 			continue ;
-		b = get_from_image(image, pixel->y, pixel->x, 0);
-		g = get_from_image(image, pixel->y, pixel->x, 1);
-		r = get_from_image(image, pixel->y, pixel->x, 2);
+		b = get_from_image(image, p_y, p_x, 0);
+		g = get_from_image(image, p_y, p_x, 1);
+		r = get_from_image(image, p_y, p_x, 2);
 		distance = get_color_distance(b, g, r, pixel);
 		target_distance = MAGIC_WAND_TOLERANCE;
-		if (wand_mask->selection_ind_mask[(y * image->width) + x] != -1)
-			target_distance = wand_mask->color_distances[(y * image->width) + x];
+		if (wand_mask->selection_ind_mask[(p_y * image->width) + p_x] != -1)
+			target_distance = wand_mask->color_distances[(p_y * image->width) + p_x];
 		if (distance >= target_distance)
 			continue ;
-		printf("OK!\n");
-		wand_mask->selection_ind_mask[(y * image->width) + x] = wand_mask->selection_ind;
-		wand_mask->color_distances[(y * image->width) + x] = distance;
+		wand_mask->selection_ind_mask[(p_y * image->width) + p_x] = wand_mask->selection_ind;
+		wand_mask->color_distances[(p_y * image->width) + p_x] = distance;
+		nb_in_selection++;
+
+
+		// WARNING HERE !!!
+		//if (nb_in_selection > 80 * 80)
+		//	return ;
+		// WARNING HERE !!!
+
+		
 		pixel = new_elt(&(wand_mask->pixels_to_explore));
-		*pixel = (t_pixel_to_explore){ .y = y - 1, .x = x, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
+		*pixel = (t_pixel_to_explore){ .y = p_y - 1, .x = p_x, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
 		pixel = new_elt(&(wand_mask->pixels_to_explore));
-		*pixel = (t_pixel_to_explore){ .y = y + 1, .x = x, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
+		*pixel = (t_pixel_to_explore){ .y = p_y + 1, .x = p_x, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
 		pixel = new_elt(&(wand_mask->pixels_to_explore));
-		*pixel = (t_pixel_to_explore){ .y = y, .x = x - 1, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
+		*pixel = (t_pixel_to_explore){ .y = p_y, .x = p_x - 1, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
 		pixel = new_elt(&(wand_mask->pixels_to_explore));
-		*pixel = (t_pixel_to_explore){ .y = y, .x = x + 1, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
+		*pixel = (t_pixel_to_explore){ .y = p_y, .x = p_x + 1, .to_compare_b = b, .to_compare_g = g, .to_compare_r = r };
 	}
 }
 
@@ -193,11 +207,53 @@ void	group_selections(t_opencv_image *image, t_magic_wand_mask *wand_mask, t_sel
 	}
 }
 
+char	more_or_less_square(int *pixels, int length)
+{
+	int		top;
+	int		bottom;
+	int		left;
+	int		right;
+	int		i;
+	float	ratio;
+
+	top = pixels[0];
+	bottom = pixels[0];
+	left = pixels[1];
+	right = pixels[1];
+	i = 0;
+	while (i < length)
+	{
+		if (pixels[i * 2] < top)
+			top = pixels[i * 2];
+		if (pixels[i * 2] > bottom)
+			bottom = pixels[i * 2];
+		if (pixels[i * 2 + 1] < left)
+			left = pixels[i * 2 + 1];
+		if (pixels[i * 2 + 1] > right)
+			right = pixels[i * 2 + 1];
+		i++;
+	}
+	if (left > 810 && left < 890)
+		printf("%d %d %d %d\n", top, bottom, left, right);
+	ratio = ((float)(bottom - top + 1)) / (right - left + 1);
+	if (left > 810 && left < 890)
+		printf("ratio : %.2f\n", ratio);
+	if (ratio < 0.9 || ratio > 1.1)
+		return (0);
+	if (((float)((bottom - top + 1) + (right - left + 1))) / 2  > 80)
+		return (0);
+	return (1);
+}
+
 char	is_possible_ball(t_opencv_image *image, int *pixels, int length)
 {
-	if (length > 40 * 40)
+	if (length > 80 * 80)
 		return (0);
-	return (rand() % 5 == 0);
+	if (length < 15 * 15)
+		return (0);
+	if (!more_or_less_square(pixels, length))
+		return (0);
+	return (1);
 }
 
 void	find_possible_ball_selections(t_opencv_image *image, t_selections *selections)
@@ -214,7 +270,7 @@ void	find_possible_ball_selections(t_opencv_image *image, t_selections *selectio
 			start_offset = selections->end_of_selections[i - 1];
 		selection_length = selections->end_of_selections[i] - start_offset;
 		selections->tmp[i] = 0;
-		if (is_possible_ball(image, selections->pixels + start_offset, selection_length))
+		if (is_possible_ball(image, selections->pixels + (start_offset * 2), selection_length))
 			selections->tmp[i] = 1;
 		i++;
 	}
@@ -236,9 +292,7 @@ void	get_possible_balls(t_opencv_image *image, t_selections *selections)
 		i++;
 	}
 	make_magic_wand_mask(image, &wand_mask);
-	printf("%d\n", image->width * image->height);
-	printf("%d\n", wand_mask.selection_ind + 1);
-	selections->nb = wand_mask.selection_ind + 1;
+	selections->nb = wand_mask.selection_ind;
 	selections->end_of_selections = (int*)malloc(sizeof(int) * (selections->nb));
 	selections->tmp = (int*)malloc(sizeof(int) * (selections->nb));
 	i = 0;
@@ -256,5 +310,4 @@ void	get_possible_balls(t_opencv_image *image, t_selections *selections)
 	free_list(&(wand_mask.pixels_to_explore));
 	find_possible_ball_selections(image, selections);
 	// selection->tmp now contains [0, 1]
-	set_colors(image);
 }
